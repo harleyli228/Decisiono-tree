@@ -1,0 +1,145 @@
+---
+title: "regression tree"
+author: "Yuquan Li"
+date: "4/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Regression tree
+## Data preprocessing
+```{r}
+movie <- read.csv(file.choose())
+summary(movie)
+```
+### 1. Inpute missing value
+```{r}
+movie$Time_taken(is.na(movie$Time_taken)) <- mean(movie$Time_taken, na.rm = TRUE)
+
+```
+
+### 2. Train-test split
+```{r}
+library(caTools)
+set.seed(0)
+split =sample.split(movie,SplitRatio = 0.8)
+train = subset(movie,split == TRUE)
+test = subset(movie,split == FALSE)
+```
+
+## Build regression tree
+```{r}
+#install required packages
+#install.packages('rpart')
+#install.packages('rpart.plot')
+library(rpart)
+library(rpart.plot)
+
+#Run regression tree model on train set
+regtree <- rpart(formula = Collection~., data = train, control = rpart.control(maxdepth = 3))
+```
+
+## Plot regression tree
+```{r}
+rpart.plot(regtree, box.palette="RdBu", digits = -3) 
+#digits = -3 easier to read
+```
+
+## Predict value using trained model
+```{r}
+test$pred <- predict(regtree, test, type = "vector")
+#vector for continuous value and class for categorical classes
+#new column in testing set
+```
+
+## Performance
+```{r}
+MSE2 <- mean((test$pred - test$Collection)^2)
+```
+
+## Pruning
+```{r}
+#Tree Pruning
+fulltree <- rpart(formula = Collection~., data = train, control = rpart.control( cp = 0))
+rpart.plot(fulltree, box.palette="RdBu", digits = -3)
+printcp(fulltree)
+plotcp(regtree)
+
+mincp <- regtree$cptable[which.min(regtree$cptable[,"xerror"]),"CP"]
+#find min cross validation error "xerror"
+
+#use the best/min cp value model
+prunedtree <- prune(fulltree, cp = mincp)
+rpart.plot(prunedtree, box.palette="RdBu", digits = -3)
+
+test$fulltree <- predict(fulltree, test, type = "vector")
+MSE2full <- mean((test$fulltree - test$Collection)^2)
+
+test$pruned <- predict(prunedtree, test, type = "vector")
+MSE2pruned <- mean((test$pruned - test$Collection)^2)
+
+accuracy_postprun <- mean(test$pred == test$left)
+```
+
+#Ensembling methods
+## 1. bagging
+```{r}
+#install.packages('randomForest')
+library (randomForest)
+set.seed (1)
+bagging =randomForest(Collection~Budget+Trailer_views, data = train ,mtry=2, importance =TRUE)
+test$bagging <- predict(bagging, test)
+MSE2bagging <- mean((test$bagging - test$Collection)^2)
+MSE2bagging
+```
+
+## 2. random forest
+```{r}
+#library(randomForest)
+fit <- randomForest(Collection~Budget+Trailer_views, data = train,ntree=500)
+summary(fit)
+#Predict Output 
+test$random <- predict(fit, test)
+MSE2random <- mean((test$random - test$Collection)^2)
+MSE2random
+```
+
+## 3. Boosting
+### 3.1 Gradient Boosting
+```{r}
+#install.packages('gbm')
+library (gbm)
+set.seed (1)
+boosting = gbm(Collection~Budget+Trailer_views, data = train, distribution="gaussian",n.trees =5000 , interaction.depth =4, shrinkage =0.2,verbose =F)
+#shrinkage value is lambda
+#verbose = F means only show final tree result, no process
+
+test$boost = predict (boosting, test,n.trees =5000)
+MSE2boost <- mean((test$boost - test$Collection)^2)
+MSE2boost
+```
+
+### 3.2 Ada Boost can only be done on classification trees on R
+### 3.3 XG Boost
+```{r}
+library(xgboost)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

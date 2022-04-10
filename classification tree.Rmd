@@ -1,0 +1,162 @@
+---
+title: "Classification tree"
+author: "Yuquan Li"
+date: "4/9/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Regression tree
+## Data preprocessing
+```{r}
+df <- read.csv(file.choose())
+summary(df)
+
+#train-test split
+library(caTools)
+set.seed(0)
+split =sample.split(movie,SplitRatio = 0.8)
+trainc = subset(df,split == TRUE)
+testc = subset(df,split == FALSE)
+```
+
+## Build classification tree
+```{r}
+#install required packages
+#install.packages('rpart')
+#install.packages('rpart.plot')
+library(rpart)
+library(rpart.plot)
+
+#Run Classification tree model on train set
+classtree <- rpart(formula = Start_Tech_Oscar~., data = trainc, method = 'class', control = rpart.control(maxdepth = 3))
+```
+
+## Plot classfication tree
+```{r}
+rpart.plot(classtree, box.palette="RdBu", digits = -3)
+#digits = -3 easier to read
+```
+
+## Predict value using trained model
+```{r}
+testc$pred <- predict(classtree, testc, type = "class")
+#class for categorical response
+```
+
+## Performance
+```{r}
+table(testc$Start_Tech_Oscar,testc$pred)
+```
+
+## Overall accuracy
+```{r}
+65/112
+```
+
+#Ensembling methods
+```{r}
+#change response variable from numerical to categorical in order to do classification models
+#str(trainc)
+trainc$Start_Tech_Oscar <- as.factor(trainc$Start_Tech_Oscar)
+```
+
+## 1. bagging
+```{r}
+#install.packages('randomForest')
+library (randomForest)
+set.seed (1)
+bagging = randomForest(Start_Tech_Oscar~., data = trainc ,mtry=2, importance =TRUE)
+testc$bagging <- predict(bagging, testc, type = "class")
+table(testc$bagging,testc$Start_Tech_Oscar)
+```
+
+## 2. random forest
+```{r}
+#library(randomForest)
+fit <- randomForest(Start_Tech_Oscar~., data = trainc,ntree=500)
+summary(fit)
+#Predict Output 
+testc$random <- predict(fit, testc,type = "class")
+table(testc$random,testc$Start_Tech_Oscar)
+
+```
+
+## 3. Boosting
+### 3.1 Gradient Boosting
+```{r}
+#install.packages('gbm')
+library (gbm)
+set.seed (0)
+trainc$X3D_available <- as.factor(trainc$X3D_available)
+trainc$Genre <- as.factor(trainc$Genre)
+
+library(dummies)
+trainx <- dummy.data.frame(trainc)
+
+trainx <- trainx[,-24]
+trainx <- trainx[,-12]
+trainx <- trainx[,-15]
+
+test_old = subset(df,split == FALSE)
+testx <- dummy.data.frame(test_old)
+testx <- testx[,-12]
+testx <- testx[,-15]
+
+
+boosting = gbm(Start_Tech_Oscar0~., data = trainx, distribution="gaussian",n.trees =5000 , interaction.depth =4, shrinkage =0.2,verbose =F)
+#distribution = 'Gaussian' for regression and 'Bernoulli' for classification
+predboost = predict (boosting, testx, n.trees =5000)
+table(testc$boost,testc$Start_Tech_Oscar)
+```
+
+### 3.2 Ada Boost 
+can only be done on classification trees on R
+```{r}
+#install.packages("adabag")
+library(adabag)
+
+adaboost <- boosting(Start_Tech_Oscar~., data=trainc, boos=TRUE,mfinal=1000)
+#boos means add weightage
+
+predada <- predict(adaboost,testc)
+table(predada$class,testc$Start_Tech_Oscar)
+
+t1<-adaboost$trees[[1]]
+plot(t1)
+text(t1,pretty=100)
+
+```
+
+### 3.3 XG Boost
+```{r}
+#install.packages("xgboost")
+library(xgboost)
+
+trainY = trainc$Start_Tech_Oscar == "1"
+
+trainX <- model.matrix(Start_Tech_Oscar ~ .-1, data = trainc)
+trainX <- trainX[,-12]
+
+test_old = subset(df,split == FALSE)
+testY = test_old$Start_Tech_Oscar == "1"
+
+testX <- model.matrix(Start_Tech_Oscar ~ .-1, data = test_old)
+testX <- testX[,-12]
+#delete additional variable
+
+Xmatrix <- xgb.DMatrix(data = trainX, label= trainY)
+Xmatrix_t <- xgb.DMatrix(data = testX, label = testY)
+
+Xgboosting <- xgboost(data = Xmatrix, # the data   
+                      nround = 50, # max number of boosting iterations
+                      objective = "multi:softmax",eta = 0.3, num_class = 2, max_depth = 10)
+
+xgpred <- predict(Xgboosting, Xmatrix_t)
+table(testY, xgpred)
+```
+
+
